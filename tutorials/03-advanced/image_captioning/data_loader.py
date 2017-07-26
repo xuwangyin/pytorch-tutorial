@@ -8,24 +8,30 @@ import nltk
 from PIL import Image
 from build_vocab import Vocabulary
 from pycocotools.coco import COCO
+import json
+# import matplotlib.pyplot as plt
 
 
 class CocoDataset(data.Dataset):
     """COCO Custom Dataset compatible with torch.utils.data.DataLoader."""
-    def __init__(self, root, json, vocab, transform=None):
+    def __init__(self, root, coco_annotation, vocab, coco_detection_result, transform=None):
         """Set the path for images, captions and vocabulary wrapper.
         
         Args:
             root: image directory.
-            json: coco annotation file path.
+            coco_annotation: coco annotation file path.
             vocab: vocabulary wrapper.
             transform: image transformer.
         """
         self.root = root
-        self.coco = COCO(json)
+        self.coco = COCO(coco_annotation)
         self.ids = list(self.coco.anns.keys())
         self.vocab = vocab
         self.transform = transform
+        with open(coco_detection_result, 'r') as f:
+            self.detection_results = json.load(f)
+        self.locations = {result['id']: result['bboxes'] for result in self.detection_results}
+        self.labels = {result['id']: result['full_categories'] for result in self.detection_results}
 
     def __getitem__(self, index):
         """Returns one data pair (image and caption)."""
@@ -39,7 +45,8 @@ class CocoDataset(data.Dataset):
         image = Image.open(os.path.join(self.root, path)).convert('RGB')
         if self.transform is not None:
             image = self.transform(image)
-
+        # plt.imshow(image.permute(1,2,0).numpy())
+        # plt.show()
         # Convert caption (string) to word ids.
         tokens = nltk.tokenize.word_tokenize(str(caption).lower())
         caption = []
@@ -47,7 +54,15 @@ class CocoDataset(data.Dataset):
         caption.extend([vocab(token) for token in tokens])
         caption.append(vocab('<end>'))
         target = torch.Tensor(caption)
-        return image, target
+
+        labels = self.labels[img_id]
+        locations = self.locations[img_id]
+        if len(labels) != len(locations):
+            raise ValueError("number of labels nust be equal to number of locations")
+        if len(labels) == 0:
+            labels = [0]
+            locations = [0]
+        return image, target, labels, locations
 
     def __len__(self):
         return len(self.ids)
@@ -71,7 +86,9 @@ def collate_fn(data):
     """
     # Sort a data list by caption length (descending order).
     data.sort(key=lambda x: len(x[1]), reverse=True)
-    images, captions = zip(*data)
+    images, captions, label_seqs, location_seqs = zip(*data)
+    assert len(label_seqs) > 0
+    assert len(label_seqs) == len(location_seqs)
 
     # Merge images (from tuple of 3D tensor to 4D tensor).
     images = torch.stack(images, 0)
@@ -81,16 +98,36 @@ def collate_fn(data):
     targets = torch.zeros(len(captions), max(lengths)).long()
     for i, cap in enumerate(captions):
         end = lengths[i]
-        targets[i, :end] = cap[:end]        
-    return images, targets, lengths
+        targets[i, :end] = cap[:end]
+    label_seq_lengths = [len(label_seq) for label_seq in label_seqs]
+    label_seq_data = torch.zeros(len(label_seqs), max(label_seq_lengths)).long()
+    for i, label_seq in enumerate(label_seqs):
+        label_seq_data[i, :len(label_seq)] = torch.LongTensor(label_seq[:len(label_seq)])
+
+    location_seq_data = torch.zeros(len(location_seqs), max(label_seq_lengths), 4)
+    for i, location_seq in enumerate(location_seqs):
+        for j in range(len(location_seq)):
+            coords = decode_location(location_seq[j])
+            location_seq_data[i, j] = coords
+
+    # TODO visualize detection results on images
+    return images, targets, lengths, label_seq_data, location_seq_data, label_seq_lengths
 
 
-def get_loader(root, json, vocab, transform, batch_size, shuffle, num_workers):
+def decode_location(location):
+    x = location // 1e9
+    y = (location % 1e9) // 1e6
+    width = (location % 1e6) // 1e3
+    height = location % 1e3
+    return torch.Tensor((x / 608, y / 608, width / 608, height / 608))
+
+def get_loader(root, coco_annotation, vocab, coco_detection_result, transform, batch_size, shuffle, num_workers):
     """Returns torch.utils.data.DataLoader for custom coco dataset."""
     # COCO caption dataset
     coco = CocoDataset(root=root,
-                       json=json,
+                       coco_annotation=coco_annotation,
                        vocab=vocab,
+                       coco_detection_result=coco_detection_result,
                        transform=transform)
     
     # Data loader for COCO dataset

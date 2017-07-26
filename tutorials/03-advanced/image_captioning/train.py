@@ -43,7 +43,7 @@ def main(args):
     # Build data loader
     data_loader = get_loader(args.image_dir, args.caption_path, vocab, args.coco_detection_result,
                              transform, args.batch_size,
-                             shuffle=False, num_workers=args.num_workers)
+                             shuffle=True, num_workers=args.num_workers)
 
     # Build the models
     encoder = EncoderCNN(args.embed_size)

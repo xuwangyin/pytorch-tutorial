@@ -2,8 +2,8 @@
 This is a Pytorch implementation of the OBJ2TEXT-YOLO + CNN-RNN image captioning model
 proposed in the paper [OBJ2TEXT: Generating Visually Descriptive Language from Object Layouts
 ](https://arxiv.org/abs/1707.07102). The Torch implementation can be found [here](https://github.com/uvavision/obj2text-neuraltalk2).
-Note that I have changed the default image transformation operations from `transforms.Compose([transforms.RandomCrop(args.crop_size), transforms.RandomHorizontalFlip(), ...` to 
-`transforms.Compose([transforms.Scale(args.crop_size), ...`. For more information please visit [the project page](http://www.cs.virginia.edu/~xy4cm/obj2text/).
+Note that I have changed the default image transformation operations from `transforms.Compose([RandomCrop(args.crop_size), RandomHorizontalFlip(), ...` to 
+`transforms.Compose([Scale(args.crop_size), ...`. For more information please visit [the project page](http://www.cs.virginia.edu/~xy4cm/obj2text/).
 
 ![alt Image captioning by joint learning of visual features and object layout encoding](png/combmodel.png)
 

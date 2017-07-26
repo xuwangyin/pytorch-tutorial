@@ -6,19 +6,22 @@ import os
 import pickle
 from data_loader import get_loader
 from build_vocab import Vocabulary
-from model import EncoderCNN, DecoderRNN
+from model import EncoderCNN, DecoderRNN, LayoutEncoder
 from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence
 from torchvision import transforms
-
 
 def to_var(x, volatile=False):
     if torch.cuda.is_available():
         x = x.cuda()
     return Variable(x, volatile=volatile)
 
-
 def main(args):
+
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(args.seed)
+
     # Create model directory
     if not os.path.exists(args.model_path):
         os.makedirs(args.model_path)
@@ -26,8 +29,9 @@ def main(args):
     # Image preprocessing
     # For normalization, see https://github.com/pytorch/vision#models
     transform = transforms.Compose([
-        transforms.RandomCrop(args.crop_size),
-        transforms.RandomHorizontalFlip(),
+        # transforms.RandomCrop(args.crop_size),
+        # transforms.RandomHorizontalFlip(),
+        transforms.Scale(args.crop_size),
         transforms.ToTensor(),
         transforms.Normalize((0.485, 0.456, 0.406),
                              (0.229, 0.224, 0.225))])
@@ -37,17 +41,20 @@ def main(args):
         vocab = pickle.load(f)
 
     # Build data loader
-    data_loader = get_loader(args.image_dir, args.caption_path, vocab,
+    data_loader = get_loader(args.image_dir, args.caption_path, vocab, args.coco_detection_result,
                              transform, args.batch_size,
-                             shuffle=True, num_workers=args.num_workers)
+                             shuffle=False, num_workers=args.num_workers)
 
     # Build the models
     encoder = EncoderCNN(args.embed_size)
+    # the layout encoder hidden state size must be the same with decoder input size
+    layout_encoder = LayoutEncoder(args.layout_embed_size, args.embed_size, 100, args.num_layers)
     decoder = DecoderRNN(args.embed_size, args.hidden_size,
                          len(vocab), args.num_layers)
 
     if torch.cuda.is_available():
         encoder.cuda()
+        layout_encoder.cuda()
         decoder.cuda()
 
     # Loss and Optimizer
@@ -58,7 +65,7 @@ def main(args):
     # Train the Models
     total_step = len(data_loader)
     for epoch in range(args.num_epochs):
-        for i, (images, captions, lengths) in enumerate(data_loader):
+        for i, (images, captions, lengths, label_seqs, location_seqs, layout_lengths) in enumerate(data_loader):
 
             # Set mini-batch dataset
             images = to_var(images, volatile=True)
@@ -67,9 +74,12 @@ def main(args):
 
             # Forward, Backward and Optimize
             decoder.zero_grad()
+            layout_encoder.zero_grad()
             encoder.zero_grad()
             features = encoder(images)
-            outputs = decoder(features, captions, lengths)
+            layout_encoding = layout_encoder(label_seqs, location_seqs, layout_lengths)
+            comb_features = features + layout_encoding
+            outputs = decoder(comb_features, captions, lengths)
             loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
@@ -103,6 +113,9 @@ if __name__ == '__main__':
     parser.add_argument('--caption_path', type=str,
                         default='./data/annotations/captions_train2014.json',
                         help='path for train annotation json file')
+    parser.add_argument('--coco_detection_result', type=str,
+                        default='./data/coco_yolo_objname_location.json',
+                        help='path coco object detection result file')
     parser.add_argument('--log_step', type=int, default=10,
                         help='step size for prining log info')
     parser.add_argument('--save_step', type=int, default=1000,
@@ -111,6 +124,8 @@ if __name__ == '__main__':
     # Model parameters
     parser.add_argument('--embed_size', type=int, default=256,
                         help='dimension of word embedding vectors')
+    parser.add_argument('--layout_embed_size', type=int, default=256,
+                        help='layout encoding size')
     parser.add_argument('--hidden_size', type=int, default=512,
                         help='dimension of lstm hidden states')
     parser.add_argument('--num_layers', type=int, default=1,
@@ -120,6 +135,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--num_workers', type=int, default=2)
     parser.add_argument('--learning_rate', type=float, default=0.001)
+    parser.add_argument('--seed', type=int, default=123, help='random generator seed')
     args = parser.parse_args()
     print(args)
     main(args)

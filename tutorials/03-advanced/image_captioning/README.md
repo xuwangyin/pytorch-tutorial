@@ -1,3 +1,12 @@
+# Image Captioning with Object Layout and Visual Features
+This is a Pytorch implementation of the OBJ2TEXT-YOLO + CNN-RNN image captioning model
+proposed in the paper [OBJ2TEXT: Generating Visually Descriptive Language from Object Layouts
+](https://arxiv.org/abs/1707.07102). The Torch implementation can be found [here](https://github.com/uvavision/obj2text-neuraltalk2).
+Note that I have changed the default image transformation operations from `transforms.Compose([transforms.RandomCrop(args.crop_size), transforms.RandomHorizontalFlip(), ...` to 
+`transforms.Compose([transforms.Scale(args.crop_size), ...`. For more information please visit [the project page](http://www.cs.virginia.edu/~xy4cm/obj2text/).
+
+![alt Image captioning by joint learning of visual features and object layout encoding](png/combmodel.png)
+
 # Image Captioning
 The goal of image captioning is to convert a given input image into a natural language description. The encoder-decoder framework is widely used for this task. The image encoder is a convolutional neural network (CNN). In this tutorial, we used [resnet-152](https://arxiv.org/abs/1512.03385) model pretrained on the [ILSVRC-2012-CLS](http://www.image-net.org/challenges/LSVRC/2012/) image classification dataset. The decoder is a long short-term memory (LSTM) network. 
 

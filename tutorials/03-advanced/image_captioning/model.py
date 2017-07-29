@@ -63,10 +63,9 @@ class LayoutEncoder(nn.Module):
             label_seqs_sorted = label_seqs_sorted.cuda()
             location_seqs_sorted = location_seqs_sorted.cuda()
 
-
         # create Variables
-        label_seqs_sorted_var = Variable(label_seqs_sorted)
-        location_seqs_sorted_var = Variable(location_seqs_sorted)
+        label_seqs_sorted_var = Variable(label_seqs_sorted, requires_grad=False)
+        location_seqs_sorted_var = Variable(location_seqs_sorted, requires_grad=False)
 
         # encode label sequences
         label_encoding = self.label_encoder(label_seqs_sorted_var)
@@ -82,17 +81,17 @@ class LayoutEncoder(nn.Module):
         hiddens, _ = self.lstm(packed)
 
         # unpack hiddens and get last hidden vector
-        hiddens_unpack = unpack(hiddens, batch_first=True)[0] # batch_size x max_seq_len x embed_size
+        hiddens_unpack = unpack(hiddens, batch_first=True)[0]  # batch_size x max_seq_len x embed_size
         last_hidden_idx = torch.zeros(hiddens_unpack.size(0), 1, hiddens_unpack.size(2)).long()
         for i in range(hiddens_unpack.size(0)):
-            last_hidden_idx[i,0,:] = lens_sorted[i] - 1
+            last_hidden_idx[i, 0, :] = lens_sorted[i] - 1
         if torch.cuda.is_available():
             last_hidden_idx = last_hidden_idx.cuda()
-        last_hidden = torch.gather(hiddens_unpack, 1, Variable(last_hidden_idx)) # batch_size x 1 x embed_size
-        last_hidden = torch.squeeze(last_hidden, 1) # batch_size x embed_size
+        last_hidden = torch.gather(hiddens_unpack, 1, Variable(last_hidden_idx, requires_grad=False))  # batch_size x 1 x embed_size
+        last_hidden = torch.squeeze(last_hidden, 1)  # batch_size x embed_size
 
         # convert back to original batch order
-        last_hidden = torch.index_select(last_hidden, 0, Variable(reverse_batch_idx))
+        last_hidden = torch.index_select(last_hidden, 0, Variable(reverse_batch_idx, requires_grad=False))
 
         return last_hidden
     
